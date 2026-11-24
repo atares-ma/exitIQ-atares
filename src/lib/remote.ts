@@ -1,0 +1,416 @@
+// Remote persistence in the ExitIQ Supabase project. Every visitor gets a real
+// auth user through anonymous sign-in, so RLS can enforce owner-only access on
+// auth.uid(). If anonymous sign-in is disabled or the network is down, the app
+// keeps working from this browser's storage and says so.
+
+import { CATALOGUE_VERSION, REPORT_VERSION, SCORING_VERSION } from '../model/catalogue';
+import type { ResultSnapshot, Task } from '../model/plan';
+import { objectivesOf, perimeterOf, profileOf } from '../model/routing';
+import type { Answer, AnswerMap, AssessmentContext } from '../model/types';
+import { getCaptchaToken } from './captcha';
+import type { RemoteAnswerRow } from './reconcile';
+import { supabase } from './supabase';
+
+export type SyncStatus = 'idle' | 'saving' | 'saved' | 'local-only' | 'error';
+type Listener = (s: SyncStatus, detail?: string) => void;
+
+/**
+ * Online backup health, separate from the momentary status: null until the
+ * first write was tried, false after a failed sign-in or write, true only
+ * after a write actually succeeded. A "saving" in between does not change it,
+ * so the notice in the app does not flicker.
+ */
+export interface BackupHealth { online: boolean | null; detail?: string }
+type HealthListener = (h: BackupHealth) => void;
+
+let status: SyncStatus = 'idle';
+let detail: string | undefined;
+let health: BackupHealth = { online: null };
+const listeners = new Set<Listener>();
+const healthListeners = new Set<HealthListener>();
+let queue: Promise<unknown> = Promise.resolve();
+let userPromise: Promise<string | null> | null = null;
+let remoteDisabledReason: string | null = null;
+
+function errorText(e: unknown): string {
+  if (e instanceof Error) return e.message;
+  if (typeof e === 'object' && e && 'message' in e) return String((e as { message: unknown }).message);
+  return String(e);
+}
+
+function setHealth(online: boolean, d?: string) {
+  if (health.online === online && health.detail === d) return;
+  health = { online, detail: d };
+  healthListeners.forEach((l) => l(health));
+}
+
+// ── save failures (test report: "record save failures") ─────────────────────
+// A failure cannot be reported while the database is unreachable, so failed
+// online writes are counted in this browser and reported once, as one 'save'
+// event, after online saving works again (see takeSaveFailures in store.ts).
+
+const FAILURES_KEY = 'exitiq-save-failures';
+
+function readFailures(): number {
+  try {
+    const n = Number(localStorage.getItem(FAILURES_KEY) ?? 0);
+    return Number.isFinite(n) && n > 0 ? Math.floor(n) : 0;
+  } catch {
+    return 0;
+  }
+}
+
+function writeFailures(n: number) {
+  try {
+    if (n > 0) localStorage.setItem(FAILURES_KEY, String(n));
+    else localStorage.removeItem(FAILURES_KEY);
+  } catch {
+    /* storage blocked: the count is best effort */
+  }
+}
+
+/** Failed online writes recorded since the last report. */
+export function saveFailures(): number {
+  return readFailures();
+}
+
+/** Returns the recorded failure count and clears it. */
+export function takeSaveFailures(): number {
+  const n = readFailures();
+  if (n) writeFailures(0);
+  return n;
+}
+
+function setStatus(s: SyncStatus, d?: string) {
+  if (s === 'error' || s === 'local-only') writeFailures(readFailures() + 1);
+  status = s;
+  detail = d;
+  listeners.forEach((l) => l(s, d));
+  if (s === 'saved') setHealth(true);
+  else if (s === 'error' || s === 'local-only') setHealth(false, d);
+}
+
+export function onSyncStatus(l: Listener): () => void {
+  listeners.add(l);
+  l(status, detail);
+  return () => listeners.delete(l);
+}
+
+export function onBackupHealth(l: HealthListener): () => void {
+  healthListeners.add(l);
+  l(health);
+  return () => healthListeners.delete(l);
+}
+
+export function backupHealth(): BackupHealth {
+  return health;
+}
+
+export function remoteAvailable(): boolean {
+  return remoteDisabledReason === null;
+}
+
+/** Returns the auth user id, signing in anonymously if needed. Null means local-only. */
+export function ensureUser(): Promise<string | null> {
+  if (!userPromise) {
+    userPromise = (async () => {
+      try {
+        const { data } = await supabase.auth.getSession();
+        if (data.session?.user) {
+          remoteDisabledReason = null;
+          return data.session.user.id;
+        }
+        // CAPTCHA protection is on for the project, so sign-in needs a Turnstile token.
+        const captchaToken = await getCaptchaToken();
+        const { data: anon, error } = await supabase.auth.signInAnonymously(captchaToken ? { options: { captchaToken } } : undefined);
+        if (error || !anon.user) throw error ?? new Error('No user returned');
+        remoteDisabledReason = null;
+        return anon.user.id;
+      } catch (e) {
+        remoteDisabledReason = errorText(e);
+        setStatus('local-only', remoteDisabledReason);
+        userPromise = null; // allow a later retry
+        return null;
+      }
+    })();
+  }
+  return userPromise;
+}
+
+/** Forget a failed sign-in so the next call tries again from scratch. A working session is kept. */
+export function resetSignIn() {
+  if (remoteDisabledReason !== null) userPromise = null;
+}
+
+/** Serialises writes so answer history lands in order. */
+function enqueue<T>(job: () => Promise<T>): Promise<T | null> {
+  const run = async (): Promise<T | null> => {
+    const uid = await ensureUser();
+    if (!uid) return null;
+    setStatus('saving');
+    try {
+      const r = await job();
+      setStatus('saved');
+      return r;
+    } catch (e) {
+      setStatus('error', errorText(e));
+      return null;
+    }
+  };
+  const p = queue.then(run, run);
+  queue = p.catch(() => undefined);
+  return p;
+}
+
+export type Stage = 'CONTEXT' | 'CRISIS' | 'SETUP' | 'OVERVIEW' | 'DEEP_ASSESSMENT' | 'INTERIM' | 'RESULT' | 'SAVED';
+
+export interface AssessmentRowInput {
+  stage: Stage;
+  resumeStage: Exclude<Stage, 'SAVED'> | null;
+  ctx: AssessmentContext;
+  uiState: Record<string, unknown>;
+  activeModules: string[];
+}
+
+function row(input: AssessmentRowInput) {
+  const c = input.ctx;
+  return {
+    stage: input.stage,
+    resume_stage: input.resumeStage,
+    perimeter: perimeterOf(c),
+    confirmed_profile: c.ownershipTags.length ? profileOf(c) : null,
+    ownership_tags: c.ownershipTags,
+    objectives: objectivesOf(c),
+    horizon: c.horizon,
+    jurisdictions: { company: c.company.country, seller: c.seller, sellerTax: c.sellerTax },
+    context: c,
+    ui_state: input.uiState,
+    active_modules: input.activeModules,
+    catalogue_version: CATALOGUE_VERSION,
+    scoring_version: SCORING_VERSION,
+    report_version: REPORT_VERSION,
+  };
+}
+
+let creating: Promise<string | null> | null = null;
+
+/** Creates the assessment row once; later calls return the same id. */
+export function createAssessment(input: AssessmentRowInput): Promise<string | null> {
+  if (!creating) {
+    creating = enqueue(async () => {
+      const { data, error } = await supabase.from('assessments').insert(row(input)).select('id').single();
+      if (error) throw error;
+      return data.id as string;
+    }).then((id) => {
+      if (!id) creating = null;
+      return id;
+    });
+  }
+  return creating;
+}
+
+export function resetCreation() {
+  creating = null;
+}
+
+/** Updates the row. Resolves true when the row exists and was written, false when it is gone, null on failure. */
+export function saveAssessment(id: string, input: AssessmentRowInput): Promise<boolean | null> {
+  return enqueue(async () => {
+    const { data, error } = await supabase.from('assessments').update(row(input)).eq('id', id).select('id');
+    if (error) throw error;
+    return (data ?? []).length > 0;
+  });
+}
+
+export function appendAnswer(id: string, questionId: string, a: Answer | null, previousId: string | null) {
+  return enqueue(async () => {
+    const payload: Record<string, unknown> = a
+      ? {
+          assessment_id: id, question_id: questionId, status: a.status, points: a.status === 'substantive' ? a.points ?? null : null,
+          option_id: a.status === 'substantive' && a.points != null ? `a${a.points}` : null,
+          value: a.followUp ? { followUp: a.followUp } : null,
+          requires_reconfirmation: !!a.requiresReconfirmation, inactive_since: a.inactiveSince ?? null,
+          previous_answer_id: previousId, source_version: CATALOGUE_VERSION,
+        }
+      : { assessment_id: id, question_id: questionId, status: 'cleared', previous_answer_id: previousId, source_version: CATALOGUE_VERSION };
+    const { data, error } = await supabase.from('answers').insert(payload).select('id').single();
+    if (error) throw error;
+    return data.id as string;
+  });
+}
+
+export function saveResult(id: string, snapshot: ResultSnapshot): Promise<true | null> {
+  return enqueue(async () => {
+    const { error } = await supabase.from('result_snapshots').insert({
+      assessment_id: id, profile: snapshot.profile, catalogue_version: snapshot.versions.catalogue, scoring_version: snapshot.versions.scoring,
+      report_version: snapshot.versions.report, data_status: snapshot.dataStatus, risk_status: snapshot.riskStatus, result: snapshot,
+    });
+    if (error) throw error;
+    if (snapshot.tasks.length) {
+      // Upsert only the derived fields; status and agreed due dates set by the user are preserved.
+      const { error: tErr } = await supabase.from('tasks').upsert(
+        snapshot.tasks.map((t: Task) => ({
+          assessment_id: id, task_key: t.key, source_question_ids: t.questionIds, rule_id: t.ruleId, priority_class: t.priorityClass,
+          title: t.title.slice(0, 300), reason: t.reason, accountable_role: t.owner, suggested_timing: t.suggestedTiming,
+          dependencies: t.dependencies, evidence_required: t.evidence,
+        })),
+        { onConflict: 'assessment_id,task_key' },
+      );
+      if (tErr) throw tErr;
+    }
+    return true as const;
+  });
+}
+
+/** Who resolved a task and how (brief s.8). Stored in tasks.resolution. */
+export interface TaskResolution { note: string; by: string; at: string }
+
+/** User follow-up on a task: status, the agreed due date (YYYY-MM-DD) and, once done, the resolution. */
+export interface TaskMetaInput { status: string; dueDate: string | null; resolution: TaskResolution | null }
+
+/** Writes the user's follow-up fields. The derived fields (title, suggested timing, ...) are never touched here. */
+export function setTaskMeta(id: string, taskKey: string, meta: TaskMetaInput): Promise<true | null> {
+  return enqueue(async () => {
+    const { error } = await supabase.from('tasks').update({
+      status: meta.status, agreed_due_date: meta.dueDate, resolution: meta.resolution,
+    }).eq('assessment_id', id).eq('task_key', taskKey);
+    if (error) throw error;
+    return true as const;
+  });
+}
+
+export function deleteAssessment(id: string) {
+  return enqueue(async () => {
+    const { error } = await supabase.from('assessments').delete().eq('id', id);
+    if (error) throw error;
+  });
+}
+
+type EventName = 'stage_view' | 'assessment_start' | 'theme_complete' | 'route_change' | 'save' | 'resume' | 'result_view' | 'contact_request' | 'export';
+
+// ── entry channel ────────────────────────────────────────────────────────────
+// A click on a landing-page call to action leaves a marker for this tab. The
+// first assessment_start event carries it as its channel when no utm_source
+// is present, so landing entries can be told apart from direct ones.
+
+const ENTRY_KEY = 'exitiq-entry';
+export const LANDING_CTA_CHANNEL = 'landing_cta';
+
+export function markLandingEntry() {
+  try {
+    sessionStorage.setItem(ENTRY_KEY, LANDING_CTA_CHANNEL);
+  } catch {
+    /* storage blocked: the entry is simply not recorded */
+  }
+}
+
+/** Reads and clears the entry marker. */
+function takeEntry(): string | null {
+  try {
+    const v = sessionStorage.getItem(ENTRY_KEY);
+    if (v) sessionStorage.removeItem(ENTRY_KEY);
+    return v;
+  } catch {
+    return null;
+  }
+}
+
+/** Channel for an event: utm_source wins; the landing marker is used (once) for assessment_start. */
+export function eventChannel(event: EventName, search: string | null): string | null {
+  const utm = search ? new URLSearchParams(search).get('utm_source') : null;
+  if (utm) return utm.slice(0, 60);
+  return event === 'assessment_start' ? takeEntry()?.slice(0, 60) ?? null : null;
+}
+
+/** Minimal analytics (section 20): no answer text, tax details or evidence. Best effort, never blocks. */
+export function track(event: EventName, assessmentId: string | null, meta: { stage?: string; profile?: string | null } = {}) {
+  if (!remoteAvailable()) return;
+  const w = typeof window !== 'undefined' ? window.innerWidth : 1200;
+  const device = w < 640 ? 'mobile' : w < 1024 ? 'tablet' : 'desktop';
+  const search = typeof location !== 'undefined' ? location.search : null;
+  const params = search != null ? new URLSearchParams(search) : null;
+  void ensureUser().then((uid) => {
+    if (!uid) return;
+    // Query builders are lazy: without .then() the request is never sent.
+    void supabase.from('analytics_events').insert({
+      assessment_id: assessmentId, event, stage: meta.stage?.slice(0, 40) ?? null, broad_context: meta.profile ?? null, device,
+      channel: eventChannel(event, search), is_internal: params?.has('internal') ?? false,
+    }).then(() => undefined, () => undefined);
+  });
+}
+
+export interface RemoteAssessment {
+  id: string;
+  ctx: AssessmentContext;
+  uiState: Record<string, unknown>;
+  answers: AnswerMap;
+  answerIds: Record<string, string>;
+  /** Follow-up on tasks as stored in the tasks table, by task key. */
+  tasks: Record<string, TaskMetaInput>;
+  updatedAt: string;
+}
+
+/** Loads the signed-in user's most recent assessment, with current answers and latest evidence. */
+export async function loadLatest(): Promise<RemoteAssessment | null> {
+  const { data: sess } = await supabase.auth.getSession();
+  if (!sess.session) return null;
+  const { data: a, error } = await supabase.from('assessments').select('*').order('updated_at', { ascending: false }).limit(1).maybeSingle();
+  if (error || !a) return null;
+  const [{ data: ans }, { data: tk }] = await Promise.all([
+    supabase.from('current_answers').select('*').eq('assessment_id', a.id),
+    supabase.from('tasks').select('task_key,status,agreed_due_date,resolution').eq('assessment_id', a.id),
+  ]);
+  const answers: AnswerMap = {};
+  const answerIds: Record<string, string> = {};
+  for (const r of ans ?? []) {
+    answerIds[r.question_id] = r.id;
+    if (r.status === 'cleared') continue;
+    answers[r.question_id] = {
+      status: r.status, points: r.points ?? undefined, answeredAt: r.created_at, followUp: r.value?.followUp ?? null,
+      requiresReconfirmation: r.requires_reconfirmation, inactiveSince: r.inactive_since,
+    };
+  }
+  const tasks: Record<string, TaskMetaInput> = {};
+  for (const r of tk ?? []) {
+    tasks[r.task_key] = { status: r.status, dueDate: r.agreed_due_date ?? null, resolution: (r.resolution as TaskResolution | null) ?? null };
+  }
+  return { id: a.id, ctx: a.context, uiState: a.ui_state ?? {}, answers, answerIds, tasks, updatedAt: a.updated_at };
+}
+
+export interface RemoteSnapshot {
+  answers: Record<string, RemoteAnswerRow>;
+  hasResult: boolean;
+}
+
+/** Current answers and whether a result snapshot exists. Null on failure. */
+export function fetchRemoteState(id: string): Promise<RemoteSnapshot | null> {
+  return enqueue(async () => {
+    const [ans, res] = await Promise.all([
+      supabase.from('current_answers').select('id,question_id,status,points,value,requires_reconfirmation,inactive_since').eq('assessment_id', id),
+      supabase.from('result_snapshots').select('id').eq('assessment_id', id).limit(1),
+    ]);
+    if (ans.error) throw ans.error;
+    if (res.error) throw res.error;
+    const answers: Record<string, RemoteAnswerRow> = {};
+    for (const r of (ans.data ?? []) as RemoteAnswerRow[]) answers[r.question_id] = r;
+    return { answers, hasResult: (res.data ?? []).length > 0 };
+  });
+}
+
+/**
+ * Links the anonymous user to an email address so the assessment can be
+ * resumed on another device. Supabase sends a confirmation link.
+ */
+export async function linkEmail(email: string): Promise<{ ok: boolean; message: string }> {
+  const uid = await ensureUser();
+  if (!uid) return { ok: false, message: 'Online-Speichern ist gerade nicht verfügbar. Ihr Fortschritt bleibt in diesem Browser.' };
+  const { error } = await supabase.auth.updateUser({ email }, { emailRedirectTo: `${location.origin}/assessment` });
+  if (error) return { ok: false, message: error.message };
+  return { ok: true, message: 'Bitte prüfen Sie Ihr Postfach und bestätigen Sie die Adresse. Der Link bringt Sie zu dieser Einschätzung zurück.' };
+}
+
+export async function signOutAndForget() {
+  await supabase.auth.signOut().catch(() => undefined);
+  userPromise = null;
+  creating = null;
+}
