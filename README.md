@@ -55,3 +55,11 @@ npm run dev
 - Reihenfolge der fünf wichtigsten Schritte: kritisch → offener Verkaufsumfang → Zeitpunkt → Wirkung (Gewicht × fehlende Punkte).
 - K3-Sperren sind als „ersetzen“ umgesetzt: Wer eine unverträgliche Option wählt, ersetzt die bisherige Auswahl.
 - Die frühere KI-Zusammenfassung und die Nachweis-Erfassung je Frage entfallen; der Nachweis steht als eigenes Feld je Aufgabe im Maßnahmenplan (ER10).
+
+## Runde 2 (Änderungsliste vom 25.11.2026)
+
+Umgesetzt: R2-01 bis R2-04 und R2-07 bis R2-12 (Fortschrittszähler über alle Angaben, Widerspruch statt
+„fehlende Antworten“, Zeitpunkte in drei Dringlichkeitsstufen, keine Frage-IDs in Nutzertexten, keine
+Ansprechperson, einheitliche Kapitelzeile, neue Ergebniskarten, Zurück vom Zwischenergebnis, atares-Hinweis
+für angestelltes Management, Unternehmensangaben in der Übersicht). Abnahmetests: `src/model/round2.test.ts`.
+Offen vor Go-live: R2-05 (Testsitzungen löschen; Probeläufe mit `?internal`).
