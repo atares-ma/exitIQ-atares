@@ -1,10 +1,10 @@
 import { useState } from 'react';
 import { RadioGroup } from '../../components/ui';
-import { chapterCount, deepList } from '../../lib/journey';
+import { chapterCount, contextDone, deepList, progressTotal, setupCountedDone, totalLabel } from '../../lib/journey';
 import { go, setContext, useAssessment, type Screen } from '../../lib/store';
 import { PROFILE_NAMES } from '../../model/catalogue';
 import {
-  COUNTRY_OPTIONS, HORIZON_OPTIONS, LIQUIDITY_OPTIONS, MANAGEMENT_OPTIONS, OWNERSHIP_OPTIONS, SELLER_TAX_OPTIONS, TOPIC_SHORT, labelOf,
+  COUNTRY_OPTIONS, EARNINGS_OPTIONS, HORIZON_OPTIONS, LARGEST_CUSTOMER_OPTIONS, RECURRING_OPTIONS, LIQUIDITY_OPTIONS, MANAGEMENT_OPTIONS, OWNERSHIP_OPTIONS, SELLER_TAX_OPTIONS, TOPIC_SHORT, labelOf,
 } from '../../model/options';
 import {
   activeTopics, asksSellerTax, autoProfile, intentLabel, investorWording, isAutoAnswered, profileOf, scopeQuestions, sellerLabel, uncertainTopics,
@@ -22,15 +22,22 @@ export function Overview() {
   const k = chapterCount(list);
   const m = scopeQuestions(ctx, s.answers).filter((q) => isAutoAnswered(q.id, ctx)).length;
   const started = list.some((x) => !!s.answers[x.q.id]);
+  const total = progressTotal(ctx, s.answers);
+  const given = contextDone(ctx) + setupCountedDone(ctx);
   const sub = [
-    `${n} Fragen in ${k} Kapiteln.`,
+    `${given} von ${totalLabel(total)} Angaben haben Sie schon gemacht. Es folgen ${n} Fragen in ${k} Kapiteln.`,
     m === 1 ? 'Eine Frage ist durch Ihre Angaben bereits beantwortet.' : m > 1 ? `${m} Fragen sind durch Ihre Angaben bereits beantwortet.` : null,
     'Nach Kapitel 4 sehen Sie ein erstes Zwischenergebnis.',
   ].filter(Boolean).join(' ');
 
+  // R2-12: every filled field counts; the largest customer (it steers Q09) comes first.
   const company = [
-    ctx.company.businessModel, ctx.company.sector, ctx.company.revenueBand, ctx.company.employeeBand,
+    ctx.company.largestCustomer ? `Größter Kunde: ${labelOf(LARGEST_CUSTOMER_OPTIONS, ctx.company.largestCustomer)}` : null,
+    ctx.company.businessModel, ctx.company.sector, ctx.company.revenueBand ? `Umsatz: ${ctx.company.revenueBand}` : null,
+    ctx.company.employeeBand ? `Mitarbeitende: ${ctx.company.employeeBand}` : null,
     ctx.company.country ? labelOf(COUNTRY_OPTIONS, ctx.company.country) : null,
+    ctx.company.recurringShare ? `Wiederkehrende Umsätze: ${labelOf(RECURRING_OPTIONS, ctx.company.recurringShare)}` : null,
+    ctx.company.earnings ? `Ergebnis: ${labelOf(EARNINGS_OPTIONS, ctx.company.earnings)}` : null,
   ].filter(Boolean).join(' · ');
   const topics = activeTopics(ctx);
   const unsure = uncertainTopics(ctx);

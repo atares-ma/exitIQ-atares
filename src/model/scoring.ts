@@ -55,8 +55,10 @@ export interface DimensionResult {
   coverage: number;
   lower: number;
   upper: number;
-  /** Questions in scope without a usable answer, in chapter order. */
+  /** Questions in scope without an answer yet (status answers included), in chapter order. Contradicted answers are not listed here. */
   openIds: string[];
+  /** Weight share that would count as answered once the contradiction is resolved (0–1). */
+  contradictedCoverage: number;
   reasons: ProvisionalReason[];
   domains: DomainResult[];
 }
@@ -126,7 +128,8 @@ export function computeScores(ctx: AssessmentContext, answers: AnswerMap): Score
           kPts += q.localWeight * points;
         } else {
           unknownWeight += e;
-          openIds.push(q.id);
+          // R2-02: an answer that contradicts another is given, not missing; it is reported as a contradiction.
+          if (!(contradicted.has(q.id) && isKnown(a))) openIds.push(q.id);
         }
       }
       return { key: d, name: DOMAIN_NAMES[d], weight: p, index: kU ? kPts / kU : null, localCoverage: sumU ? kU / sumU : 0 };
@@ -136,7 +139,8 @@ export function computeScores(ctx: AssessmentContext, answers: AnswerMap): Score
     const rawIndex = knownWeight > EPS ? weightedPoints / knownWeight : null;
     const reasons: ProvisionalReason[] = [];
     const ordered = applicable.map((q) => q.id).filter((id) => openIds.includes(id));
-    const dimContradicted = [...contradicted].filter((id) => controls[id]?.domain[0] === D.key);
+    const dimContradicted = [...contradicted].filter((id) => controls[id]?.domain[0] === D.key && isKnown(answers[id]));
+    const contradictedCoverage = dimContradicted.reduce((t, id) => t + (controls[id]?.effectiveWeight ?? 0), 0) / 100;
     if (ordered.length) reasons.push({ kind: 'open', ids: ordered });
     if (dimContradicted.length) reasons.push({ kind: 'contradiction', ids: dimContradicted });
     for (const topic of unsure) if (TOPIC_DIMENSIONS[topic].includes(D.key)) reasons.push({ kind: 'topic', topic });
@@ -149,7 +153,7 @@ export function computeScores(ctx: AssessmentContext, answers: AnswerMap): Score
     return {
       key: D.key, name: D.name, status, rawIndex,
       displayIndex: status !== 'insufficient' && rawIndex != null ? Math.round(rawIndex) : null,
-      coverage, lower: weightedPoints / 100, upper: weightedPoints / 100 + unknownWeight, openIds: ordered, reasons, domains,
+      coverage, lower: weightedPoints / 100, upper: weightedPoints / 100 + unknownWeight, openIds: ordered, contradictedCoverage, reasons, domains,
     };
   });
 

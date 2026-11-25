@@ -5,7 +5,7 @@
 
 import { PROFILE_NAMES, QUESTION_BY_ID } from '../model/catalogue';
 import type { Result } from '../model/plan';
-import { contributorOf, questionText, STATUS_LABEL } from '../model/routing';
+import { questionText, STATUS_LABEL } from '../model/routing';
 import type { AnswerMap, AssessmentContext } from '../model/types';
 import { fileDate, formatDate } from './i18n';
 import { deepList } from './journey';
@@ -126,20 +126,19 @@ export async function buildActionPlanWorkbook({ result: r, ctx, answers, tasks, 
   }
 
   // ── Maßnahmenplan ──────────────────────────────────────────────────────────
-  const plan = sheet('Maßnahmenplan', [6, 44, 50, 26, 50, 20, 14, 14]);
-  header(plan, 5, ['Nr.', 'Aufgabe', 'Warum', 'Ansprechperson', 'Nachweis', 'Zeitpunkt (Vorschlag)', 'Kapitel', 'Status']);
+  const plan = sheet('Maßnahmenplan', [6, 44, 50, 50, 20, 14, 14]);
+  header(plan, 5, ['Nr.', 'Aufgabe', 'Warum', 'Nachweis', 'Zeitpunkt (Vorschlag)', 'Kapitel', 'Status']);
   r.tasks.forEach((t, i) => {
     const rr = 6 + i;
     cell(plan, rr, 1, i + 1);
     cell(plan, rr, 2, t.title, i < r.topSteps.length);
     cell(plan, rr, 3, t.reason);
-    cell(plan, rr, 4, t.owner);
-    cell(plan, rr, 5, t.evidence);
-    cell(plan, rr, 6, t.suggestedTiming);
-    cell(plan, rr, 7, t.chapter != null ? `${t.chapter + 1}` : '–');
-    cell(plan, rr, 8, STATUS[tasks[t.key]?.status ?? 'open']);
+    cell(plan, rr, 4, t.evidence);
+    cell(plan, rr, 5, t.suggestedTiming);
+    cell(plan, rr, 6, t.chapter != null ? `${t.chapter + 1}` : '–');
+    cell(plan, rr, 7, STATUS[tasks[t.key]?.status ?? 'open']);
   });
-  plan.autoFilter = { from: { row: 5, column: 1 }, to: { row: 5 + r.tasks.length, column: 8 } };
+  plan.autoFilter = { from: { row: 5, column: 1 }, to: { row: 5 + r.tasks.length, column: 7 } };
 
   // ── Unterlagen ─────────────────────────────────────────────────────────────
   const docs = sheet('Unterlagen', [70, 30, 14]);
@@ -151,8 +150,8 @@ export async function buildActionPlanWorkbook({ result: r, ctx, answers, tasks, 
   });
 
   // ── Antworten ──────────────────────────────────────────────────────────────
-  const ans = sheet('Antworten', [10, 30, 60, 50, 28]);
-  header(ans, 5, ['Kapitel', 'Thema', 'Frage', 'Antwort', 'Ansprechperson']);
+  const ans = sheet('Antworten', [10, 30, 60, 50]);
+  header(ans, 5, ['Kapitel', 'Thema', 'Frage', 'Antwort']);
   deepList(ctx, answers).forEach((x, i) => {
     const a = answers[x.q.id];
     const text = questionText(x.q, ctx, answers);
@@ -164,7 +163,6 @@ export async function buildActionPlanWorkbook({ result: r, ctx, answers, tasks, 
     cell(ans, 6 + i, 2, `${x.q.name}`);
     cell(ans, 6 + i, 3, text.question);
     cell(ans, 6 + i, 4, answer);
-    cell(ans, 6 + i, 5, contributorOf(x.q, ctx));
   });
 
   const buf = (await wb.xlsx.writeBuffer()) as ArrayBuffer;

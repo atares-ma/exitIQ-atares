@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { CheckboxGroup, Field, Glossed, RadioGroup } from '../../components/ui';
-import { setup1Complete, setup2Complete } from '../../lib/journey';
+import { positionsLabel, setup1Complete, setup2Complete } from '../../lib/journey';
+import { ProgressCounter } from './Progress';
+import { Notice } from './Notice';
 import { go, setContext, useAssessment } from '../../lib/store';
 import {
   BUSINESS_MODELS, COUNTRY_OPTIONS, EARNINGS_OPTIONS, EMPLOYEE_BANDS, HORIZON_OPTIONS, LARGEST_CUSTOMER_OPTIONS, OWNERSHIP_OPTIONS,
@@ -26,9 +28,10 @@ export function Setup1() {
   return (
     <main className="app-main">
       <div className="page-head">
-        <span className="kicker">Einrichtung · Seite 1 von 2</span>
+        <ProgressCounter label={positionsLabel(5, asksPerspective(ctx) ? 6 : 5)} />
         <h1 className="h1 page-title">Starten wir mit der Detailbewertung.</h1>
       </div>
+      <Notice />
       <Field id="f-hor" label={horizonLabel}>
         <RadioGroup label={horizonLabel} choices={HORIZON_OPTIONS} value={ctx.horizon} onChange={(horizon) => setContext({ horizon })} min="200px" />
       </Field>
@@ -86,13 +89,15 @@ export function Setup2() {
     setContext({ uncertainTopics, topics: ctx.topics.filter((x) => x !== v), topicsNone: false });
   };
   const unsureChoices = TOPIC_OPTIONS.filter((o) => !(part && o.value === 'shared_services'));
+  const first = asksPerspective(ctx) ? 7 : 6;
 
   return (
     <main className="app-main">
       <div className="page-head">
-        <span className="kicker">Einrichtung · Seite 2 von 2</span>
-        <h1 className="h1 page-title">Noch zwei Angaben zu Ihrer Situation.</h1>
+        <ProgressCounter label={positionsLabel(first, first + 1)} />
+        <h1 className="h1 page-title">Noch {profileOf(ctx) !== 'OWNER' ? 'drei' : 'zwei'} Angaben zu Ihrer Situation.</h1>
       </div>
+      <Notice />
       <Field id="f-topics" label="Was trifft auf Ihr Unternehmen zu?" note="Mehrfachauswahl möglich">
         <CheckboxGroup label="Was trifft auf Ihr Unternehmen zu?" layout="list"
           values={[...(ctx.topicsNone ? [NONE] : []), ...checked.filter((t) => !ctx.uncertainTopics.includes(t))] as (Topic | typeof NONE)[]}

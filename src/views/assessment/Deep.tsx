@@ -1,11 +1,12 @@
-import { Bar, Glossed, RadioGroup } from '../../components/ui';
-import { endsFirstPart, firstIndexOfChapter, hasResponse, progressCounts, deepList, needsVisit } from '../../lib/journey';
+import { Glossed, RadioGroup } from '../../components/ui';
+import { endsFirstPart, firstIndexOfChapter, hasResponse, deepList, needsVisit, questionPosition } from '../../lib/journey';
 import { chapterDone, go, reconfirm, setAnswer, setFollowUp, setPosition, useAssessment } from '../../lib/store';
 import { CHAPTERS, INTERIM_AFTER_CHAPTER } from '../../model/catalogue';
 import { buildResult } from '../../model/plan';
-import { STATUS_LABEL, contributorOf, followUpQuestion, naLabel, questionText, statusLine } from '../../model/routing';
+import { STATUS_LABEL, followUpQuestion, naLabel, questionText, statusLine } from '../../model/routing';
 import type { Answer, Points } from '../../model/types';
 import { Notice } from './Notice';
+import { ProgressCounter } from './Progress';
 import { TrackQuestion } from './TrackQuestion';
 
 type Value = Points | 'clarify' | 'lookup' | 'na';
@@ -35,7 +36,6 @@ export function Deep() {
   const follow = followUpQuestion(q.id, s.answers);
   const value = valueOf(a);
   const done = hasResponse(q.id, a, s.answers);
-  const progress = progressCounts(list, s.answers);
 
   const choices = [
     ...text.anchors.map((label, i) => ({ value: (i * 50) as Value, label: <Glossed nested text={label} /> })),
@@ -68,11 +68,8 @@ export function Deep() {
     <>
       <TrackQuestion id={q.id} />
       <div className="deep-top">
-        <span className="kicker">Kapitel {chapter + 1} von {CHAPTERS.length} · {CHAPTERS[chapter].title}</span>
-        <div className="deep-count">
-          <span aria-live="polite">Frage {qi + 1} von {list.length}</span>
-          <Bar dark value={(progress.answered / progress.total) * 100} color="var(--teal)" label={`${progress.answered} von ${progress.total} beantwortet`} />
-        </div>
+        <span className="kicker">Kapitel {chapter + 1} · {CHAPTERS[chapter].title}</span>
+        <ProgressCounter label={`Frage ${questionPosition(s.ctx, qi)}`} />
       </div>
       <Notice />
 
@@ -94,7 +91,6 @@ export function Deep() {
               choices={[{ value: 'yes', label: 'Ja' }, { value: 'no', label: 'Nein' }]} onChange={(v) => setFollowUp(q.id, v)} />
           </div>
         )}
-        <p className="q-meta">Ansprechperson: {contributorOf(q, s.ctx)}</p>
       </section>
 
       <div className="nav-row">

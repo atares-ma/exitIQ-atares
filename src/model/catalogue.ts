@@ -130,7 +130,7 @@ export const QUESTIONS: QuestionDef[] = [
       'Nein, die Grenzen sind noch offen.', 'Ein Entwurf steht, einzelne Zuordnungen sind offen.', 'Ja, alles ist zugeordnet und festgehalten.')),
   q('Q05', 'S3', 2, 'CORE', 'Wege für den Verkauf', 'G',
     c('Transaktionsleitung / Berater', 'Sie oder Ihr M&A-Berater', 'Sie / Ihr M&A-Berater'),
-    'Datierter Vergleich der Verkaufswege mit Vor- und Nachteilen, gemessen an den Zielen aus Q01',
+    'Datierter Vergleich der Verkaufswege mit Vor- und Nachteilen, gemessen an Ihren Zielen',
     t('Haben Sie verglichen, welche Wege für einen Verkauf in Frage kommen, z. B. an ein anderes Unternehmen, einen Finanzinvestor, Ihr Management oder in der Familie?',
       'Nein, noch nicht verglichen.', 'Die Wege kennen wir, Vor- und Nachteile sind nicht abgewogen.', 'Ja, Vor- und Nachteile sind gegen unsere Ziele abgewogen und festgehalten.')),
   q('Q06', 'S3', 2, 'CORE', 'Künftige Rolle der Führung', 'F',
@@ -275,7 +275,7 @@ export const QUESTIONS: QuestionDef[] = [
       'Nein, das haben wir nicht geprüft.', 'Das wissen wir, das Vorgehen ist aber nicht geplant.', 'Ja, geprüft; nötige Zustimmungen und Zeitplan sind festgehalten.')),
   q('Q55', 'T1', 2, 'PRIMARY_CAPITAL', 'Mittelverwendung und Verkaufserlöse', 'G',
     c('CFO / Gesellschafter', 'Sie'),
-    'Mittelverwendungsplan für das neue Kapital, verknüpft mit der Planung aus Q22, plus Aufstellung etwaiger Verkaufserlöse',
+    'Mittelverwendungsplan für das neue Kapital, verknüpft mit Ihrer Mehrjahresplanung, plus Aufstellung etwaiger Verkaufserlöse',
     t('Ist klar getrennt, wie viel Geld ins Unternehmen fließt und wie viel an Gesellschafter, die Anteile verkaufen?',
       'Nein, das ist nicht getrennt.', 'Eine grobe Aufteilung gibt es, ein Finanzierungsplan fehlt.', 'Ja, Mittelverwendung und Verkaufserlöse sind getrennt geplant, oder alles fließt ins Unternehmen.')),
 

@@ -4,11 +4,10 @@ import { fileDate, formatDate } from '../../lib/i18n';
 import { contactMailto, CONTACT_EMAIL } from '../../lib/links';
 import { track } from '../../lib/remote';
 import { deleteEverything, go, openQuestion, recordResult, taskMetaOf, updateTasks, useAssessment, type TaskStatus } from '../../lib/store';
-import { DOMAIN_NAMES, PROFILE_NAMES, QUESTION_BY_ID, ROUTE_LABELS } from '../../model/catalogue';
+import { PROFILE_NAMES, QUESTION_BY_ID, ROUTE_LABELS } from '../../model/catalogue';
 import { HORIZON_OPTIONS, labelOf } from '../../model/options';
-import { buildResult, leadFor, type Task } from '../../model/plan';
+import { buildResult, type Task } from '../../model/plan';
 import { intentLabel } from '../../model/routing';
-import type { DomainKey } from '../../model/types';
 import { ValueCard } from './Values';
 
 const STATUS: Record<TaskStatus, string> = { open: 'Offen', in_progress: 'In Arbeit', done: 'Erledigt' };
@@ -76,7 +75,6 @@ export function Result() {
       <b className="task-title">{t.title}</b>
       {t.reason && <span className="task-reason">{t.reason}</span>}
       <div className="task-facts">
-        {t.owner && <span>Ansprechperson: {t.owner}</span>}
         <span>Zeitpunkt (Vorschlag): {t.suggestedTiming}</span>
         {t.waitingFor.length > 0 && <span>Wartet auf: {t.waitingFor.map((id) => QUESTION_BY_ID[id].name).join(', ')}</span>}
       </div>
@@ -126,11 +124,11 @@ export function Result() {
               <p className="scope-note" role="note">Ihr Verkaufsumfang ist noch offen. Verkaufen Sie nur einen Teil, kommen bis zu 7 Fragen hinzu, und die Werte können sich ändern.</p>
             )}
             <div className="dim-grid">
-              {r.dimensions.map((d) => <ValueCard key={d.key} d={d} returnTo="result" light />)}
+              {r.dimensions.map((d) => <ValueCard key={d.key} d={d} score={r.score} returnTo="result" light />)}
             </div>
             {r.adviserNote && (
               <div className="atares-note">
-                <p>Sie haben angegeben, dass ein erfahrener Berater noch fehlt. atares begleitet Inhaber durch den ganzen Verkauf.</p>
+                <p>Sie haben angegeben, dass ein erfahrener Berater noch fehlt. {s.ctx.managementModel === 'owner_led' ? 'atares begleitet Inhaber durch den ganzen Verkauf.' : 'atares begleitet Gesellschafter und Management durch den ganzen Verkauf.'}</p>
                 <a className="btn btn-navy btn-sm no-print" href={contactMailto()} title={CONTACT_EMAIL}
                   onClick={() => track('contact_request', s.remoteId, { stage: 'RESULT' })}>Gespräch vereinbaren</a>
               </div>
@@ -196,17 +194,6 @@ export function Result() {
               </ul>
             </section>
           )}
-
-          <section className="rsec" aria-labelledby="lead-title">
-            <details className="how-to-read">
-              <summary id="lead-title">Vorgeschlagene Leitung je Bereich</summary>
-              <dl className="lead-list">
-                {(Object.keys(DOMAIN_NAMES) as DomainKey[]).map((d) => (
-                  <div key={d}><dt>{DOMAIN_NAMES[d]}</dt><dd>{leadFor(d, s.ctx)}</dd></div>
-                ))}
-              </dl>
-            </details>
-          </section>
 
           <section className="next-card no-print" aria-labelledby="next-title">
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxWidth: 520 }}>

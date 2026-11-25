@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { navigate } from '../App';
 import { Bar, Brand, CheckboxGroup, RadioGroup } from '../components/ui';
-import { contextComplete, setupComplete } from '../lib/journey';
+import { contextComplete, progressTotal, setupComplete, totalLabel } from '../lib/journey';
 import { imprintUrl, privacyUrl } from '../lib/links';
 import { markLandingEntry } from '../lib/remote';
 import { go, hasProgress, setContext, useAssessment } from '../lib/store';
@@ -15,7 +15,7 @@ const STAGES = [
   { title: 'Einrichtung', body: 'Zeitplan, Spezialthemen wie Kredite oder frühere Zukäufe und wer verkauft. Für eine private Nachfolge sind das drei Angaben.', outcome: 'Ihr Fragenumfang', detail: 'Die Übersicht zeigt, wie viele Fragen für Sie gelten und welche durch Ihre Angaben schon beantwortet sind.' },
   { title: 'Kapitel 1–4', body: 'Ziele und Entscheidung, Wirtschaftlichkeit, Umsatz und Betrieb, Personen und Kontinuität. Eine Frage pro Seite mit drei klaren Aussagen.', outcome: 'Zwischenergebnis', detail: 'Nach Kapitel 4 stehen zwei von drei Werten fest: Strategische Klarheit und Operative Übertragbarkeit.' },
   { title: 'Kapitel 5–8', body: 'Finanzen, Steuern, Recht und Transaktionsdurchführung. Wo Sie etwas erst klären oder nachsehen müssen, wird es zur Aufgabe statt zur Lücke.', outcome: 'Dritter Wert', detail: 'Die Transaktionsvorbereitung zeigt, wie weit Zahlen, Steuern und Verträge für einen Käufer bereit sind.' },
-  { title: 'Ergebnis', body: 'Drei Werte mit Status und Spanne, darunter Ihre fünf wichtigsten Schritte, weitere Aufgaben nach Kapitel und eine Checkliste der Unterlagen.', outcome: 'Konkrete nächste Schritte', detail: 'Jede Aufgabe nennt Ansprechperson, Zeitpunkt und den passenden Nachweis. Als PDF oder Excel mitnehmen.' },
+  { title: 'Ergebnis', body: 'Drei Werte mit Status und Spanne, darunter Ihre fünf wichtigsten Schritte, weitere Aufgaben nach Kapitel und eine Checkliste der Unterlagen.', outcome: 'Konkrete nächste Schritte', detail: 'Jede Aufgabe nennt Zeitpunkt und den passenden Nachweis. Als PDF oder Excel mitnehmen.' },
 ];
 
 const DIMS = [
@@ -99,7 +99,7 @@ export default function Landing() {
                 <img src="/media/atares-logo-white.png" alt="atares" style={{ height: 26, width: 'auto', alignSelf: 'flex-start' }} />
                 <p className="landing-disclaimer">
                   ExitIQ ist eine strukturierte Selbsteinschätzung. Sie ersetzt keine rechtliche, steuerliche oder finanzielle Beratung, und die Ergebnisse sind keine Unternehmensbewertung.
-                  Kostenlos und unverbindlich. Ihre Angaben werden laufend gespeichert, Sie können jederzeit pausieren. Jede Aufgabe nennt eine Ansprechperson. Ihre Angaben behandeln wir vertraulich und geben sie nur mit Ihrer Zustimmung weiter.
+                  Kostenlos und unverbindlich. Ihre Angaben werden laufend gespeichert, Sie können jederzeit pausieren. Ihre Angaben behandeln wir vertraulich und geben sie nur mit Ihrer Zustimmung weiter.
                 </p>
               </div>
               <div style={{ display: 'flex', gap: 20, fontSize: 13 }}>
@@ -156,7 +156,7 @@ function Hero({ onStart }: { onStart: () => void }) {
         <div className="glass hero-card" aria-label="Die ersten vier Fragen">
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
             <span className="pill hero-card-pill">Kontext</span>
-            <span style={{ fontSize: 13, color: 'rgba(255,255,255,0.74)' }} aria-live="polite">Frage {step + 1} von 4</span>
+            <span style={{ fontSize: 13, color: 'rgba(255,255,255,0.74)' }} aria-live="polite">Frage {step + 1} von {totalLabel(progressTotal(ctx, {}))}</span>
           </div>
           <div className="progress-dots" aria-hidden="true">
             {[0, 1, 2, 3].map((i) => <span key={i} className={i < step ? 'done' : i === step ? 'current' : ''} />)}
@@ -297,7 +297,7 @@ function Ownership() {
       <div className="wrap section" style={{ display: 'flex', flexDirection: 'column', gap: 26 }}>
         <div className="kicker dark">Eigentümerstruktur</div>
         <h2 className="h2" id="own-title" style={{ maxWidth: 720 }}>Die Fragen folgen Ihrer Situation.</h2>
-        <p className="lead muted" style={{ maxWidth: 780, fontSize: 16 }}>Eine Familiennachfolge wirft andere Fragen auf als ein PE-Exit oder der Verkauf eines Geschäftsbereichs. ExitIQ wählt Fragen, Wortlaute und Ansprechpersonen passend zu Ihren Angaben.</p>
+        <p className="lead muted" style={{ maxWidth: 780, fontSize: 16 }}>Eine Familiennachfolge wirft andere Fragen auf als ein PE-Exit oder der Verkauf eines Geschäftsbereichs. ExitIQ wählt Fragen und Wortlaute passend zu Ihren Angaben.</p>
         <div role="tablist" aria-label="Eigentümerstruktur" style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
           {PROFILES.map((x, j) => <button key={x.label} type="button" role="tab" aria-selected={i === j} className="profile-tab" onClick={() => setI(j)}>{x.label}</button>)}
         </div>

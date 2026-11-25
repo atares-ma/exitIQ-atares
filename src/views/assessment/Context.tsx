@@ -1,6 +1,8 @@
 import { navigate } from '../../App';
 import { CheckboxGroup, Field, RadioGroup } from '../../components/ui';
 import { contextComplete, setupComplete } from '../../lib/journey';
+import { ProgressCounter } from './Progress';
+import { Notice } from './Notice';
 import { go, setContext, useAssessment } from '../../lib/store';
 import { INTENT_OPTIONS, LIQUIDITY_OPTIONS, MANAGEMENT_OPTIONS, OWNERSHIP_OPTIONS } from '../../model/options';
 import { crisisReason, intentLabel, onlyCorporate, toggleIntent } from '../../model/routing';
@@ -26,10 +28,12 @@ export function ContextScreen() {
   return (
     <main className="app-main">
       <p className="effort-line">Dauer etwa 15 Minuten, rund 40 Angaben. Sie können jederzeit pausieren.</p>
+      <ProgressCounter label="Fragen 1 bis 4" />
       <div className="page-head">
         <h1 className="h1 page-title">Zunächst ein wenig zu Ihrem Unternehmen.</h1>
         <p className="lead page-sub">Vier kurze Fragen, damit Sie nur Fragen erhalten, die zu Ihrer Situation passen.</p>
       </div>
+      <Notice />
       <Field id="k1" label="Wem gehört das Unternehmen heute?" note="Mehrfachauswahl möglich">
         <CheckboxGroup label="Wem gehört das Unternehmen heute?" choices={OWNERSHIP_OPTIONS} values={ctx.ownershipTags} onToggle={setOwnership} />
       </Field>

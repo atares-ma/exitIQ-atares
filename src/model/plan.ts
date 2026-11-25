@@ -210,11 +210,41 @@ export function buildTasks(ctx: AssessmentContext, answers: AnswerMap, score: Sc
     }
   }
 
-  // ER6 order: critical first (fixed order), the open sales scope, then by timing and impact; dependencies first.
-  const rank = (t: Task) => (t.kind === 'critical' ? 0 : t.kind === 'scope' ? 1 : t.kind === 'review' || t.kind === 'setting' ? 2 : 3);
-  const sorted = [...tasks].sort((x, y) => rank(x) - rank(y)
+  // R2-03: three urgency tiers from the timing table of the chosen horizon.
+  //  1 Sofort: critical prerequisites, "Verkaufsumfang festlegen", Q02 and Q41 below 100 (timetable and team drive everything else)
+  //  2 next weeks: answers with 0 points, Q01 below 100 (Q05 waits for it), status tasks, uncertain topics or seller, contradictions
+  //  3 later: everything else
+  const tierOf = (t: Task): number => {
+    if (t.kind === 'critical' || t.kind === 'scope') return 1;
+    const id = t.questionIds[0];
+    if (t.ruleId == null && (id === 'Q02' || id === 'Q41')) return 1;
+    if (t.kind === 'status' || t.kind === 'setting' || t.kind === 'review') return 2;
+    if (t.kind === 'gap' && (score.controls[id]?.points === 0 || id === 'Q01')) return 2;
+    return 3;
+  };
+  const tier = new Map(tasks.map((t) => [t, tierOf(t)]));
+  // A task that waits for another never comes in an earlier tier than that task.
+  for (let changed = true, guard = 0; changed && guard < 10; guard++) {
+    changed = false;
+    for (const t of tasks) {
+      for (const d of t.waitingFor) {
+        const dep = tasks.find((x) => x !== t && x.questionIds.includes(d));
+        if (dep && tier.get(dep)! > tier.get(t)!) { tier.set(t, tier.get(dep)!); changed = true; }
+      }
+    }
+  }
+  for (const t of tasks) {
+    const n = tier.get(t)!;
+    t.timingRank = n - 1;
+    t.suggestedTiming = timing[n - 1];
+  }
+
+  // ER6 order as in the brief: critical first (fixed order), then tier, then impact; the open sales scope leads its tier.
+  const sorted = [...tasks].sort((x, y) => Number(x.kind !== 'critical') - Number(y.kind !== 'critical')
     || (x.kind === 'critical' && y.kind === 'critical' ? RULE_ORDER.indexOf(x.ruleId!) - RULE_ORDER.indexOf(y.ruleId!) : 0)
-    || x.timingRank - y.timingRank || y.impact - x.impact);
+    || x.timingRank - y.timingRank
+    || Number(x.kind !== 'scope') - Number(y.kind !== 'scope')
+    || y.impact - x.impact);
   return dependencyOrder(sorted);
 }
 
@@ -225,7 +255,7 @@ function settingTask(key: string, kind: TaskKind, title: string, reason: string,
   };
 }
 
-/** Within the same rank a task never comes before a task it depends on. Stable otherwise. */
+/** Within the same tier a task never comes before a task it depends on. Stable otherwise. */
 export function dependencyOrder(sorted: Task[]): Task[] {
   const out: Task[] = [];
   const placed = new Set<Task>();
@@ -234,7 +264,7 @@ export function dependencyOrder(sorted: Task[]): Task[] {
     if (placed.has(t) || visiting.has(t)) return;
     visiting.add(t);
     for (const d of t.dependencies) {
-      const dep = sorted.find((x) => x !== t && x.priorityClass === t.priorityClass && x.questionIds.includes(d));
+      const dep = sorted.find((x) => x !== t && x.timingRank === t.timingRank && x.kind !== 'critical' && t.kind !== 'critical' && x.questionIds.includes(d));
       if (dep) visit(dep);
     }
     visiting.delete(t);

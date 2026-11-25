@@ -10,7 +10,7 @@ import { buildResult, snapshotOf } from '../model/plan';
 import { activeModules, crisisReason, profileOf, reconcileScope, resolveRoutes } from '../model/routing';
 import type { Answer, AnswerMap, AssessmentContext, Topic } from '../model/types';
 import { blankContext } from './context';
-import { deepList, firstOpenIndex, normalizeScreen, type Screen } from './journey';
+import { deepList, firstOpenIndex, normalizeScreen, progressTotal, type Screen } from './journey';
 import { answerMatches } from './reconcile';
 import * as remote from './remote';
 
@@ -237,7 +237,20 @@ function applyContext(ctx: AssessmentContext, answers: AnswerMap, extra: Partial
 }
 
 export function setContext(patch: Partial<AssessmentContext>) {
-  applyContext({ ...state.ctx, ...patch }, state.answers);
+  const next = { ...state.ctx, ...patch };
+  // R2-01 rule 5: once the total is exact, a settings change that adds or removes questions is reported once.
+  const before = progressTotal(state.ctx, state.answers);
+  const after = progressTotal(next, state.answers);
+  const diff = after.total - before.total;
+  const notice = !before.approx && !after.approx && diff !== 0 ? changeNotice(diff) : undefined;
+  applyContext(next, state.answers, notice ? { notice } : {});
+}
+
+export function changeNotice(diff: number): string {
+  const k = Math.abs(diff);
+  const what = k === 1 ? '1 Frage' : `${k} Fragen`;
+  if (diff > 0) return `Durch Ihre Änderung ${k === 1 ? 'kommt' : 'kommen'} ${what} hinzu.`;
+  return `Durch Ihre Änderung ${k === 1 ? 'entfällt' : 'entfallen'} ${what}.`;
 }
 
 /** "Trifft auf uns nicht zu" at Q28 or Q31 deselects the specialist topic (ST3). */

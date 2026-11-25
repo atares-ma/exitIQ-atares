@@ -869,3 +869,48 @@ select.input option { color: var(--navy); }
   .opt { font-size: 15px; }
   .glass { padding: 18px; }
 }
+
+/* ══ Runde 2 (25.11.2026) ═══════════════════════════════════════════════════ */
+
+/* R2-01 progress counter with the interim mark */
+.progress-counter { display: flex; flex-direction: column; gap: 8px; font-size: 14px; font-weight: 700; }
+.progress-track { position: relative; height: 6px; border-radius: 3px; background: rgba(255, 255, 255, 0.16); margin-bottom: 16px; }
+.progress-track > i { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 3px; background: var(--teal); transition: width 0.3s; }
+.progress-mark { position: absolute; top: -4px; width: 2px; height: 14px; background: var(--lime); transform: translateX(-1px); }
+.progress-mark-label { position: absolute; top: 15px; left: 50%; transform: translateX(-50%); font-size: 11px; font-weight: 600; color: rgba(255, 255, 255, 0.72); white-space: nowrap; }
+.page-done { margin: 0; font-size: 15px; font-weight: 600; color: var(--teal-pale); }
+
+/* R2-09 value cards: one state, one action, notes at the end */
+.vcard { border-radius: 20px; padding: 22px; display: flex; flex-direction: column; gap: 14px; }
+.vcard-dark { border: 1px solid rgba(255, 255, 255, 0.2); background: linear-gradient(180deg, rgba(255, 255, 255, 0.13), rgba(255, 255, 255, 0.07)); }
+.vcard-light { border: 1px solid var(--grey-2); background: var(--white); color: var(--navy); }
+.vcard-name { margin: 0; font-size: 19px; }
+.vcard-value { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.vcard-of { font-size: 15px; font-weight: 600; }
+.vcard-state { font-size: 14px; color: rgba(255, 255, 255, 0.78); }
+.vcard-light .vcard-state { color: var(--grey-4); }
+.vcard-novalue { display: flex; flex-direction: column; gap: 8px; }
+.vcard-headline { margin: 0; font-size: 15px; }
+.vcard-sub { margin: 0; font-size: 13px; color: rgba(255, 255, 255, 0.78); }
+.vcard-light .vcard-sub { color: var(--grey-4); }
+.vcard-bar { height: 6px; border-radius: 3px; background: rgba(255, 255, 255, 0.16); position: relative; overflow: hidden; }
+.vcard-light .vcard-bar { background: var(--grey-1); }
+.vcard-bar > i { position: absolute; left: 0; top: 0; bottom: 0; background: var(--teal); border-radius: 3px; }
+.vcard-light .vcard-bar > i { background: var(--navy-2); }
+.vcard-bar-thin { height: 4px; }
+.vcard-action { align-self: flex-start; margin-top: 4px; }
+.vcard-areas { list-style: none; margin: 0; padding: 12px 0 0; border-top: 1px solid rgba(255, 255, 255, 0.14); display: flex; flex-direction: column; gap: 10px; }
+.vcard-light .vcard-areas { border-top-color: var(--grey-1); }
+.vcard-areas li { display: flex; flex-direction: column; gap: 5px; }
+.vcard-area-row { display: flex; justify-content: space-between; gap: 12px; font-size: 14px; }
+.vcard-area-num { white-space: nowrap; font-weight: 600; }
+.vcard-link { font-size: 14px; }
+.vcard-light .link-inline { color: var(--teal-dark); }
+.vcard-notes { display: flex; flex-direction: column; gap: 6px; margin-top: auto; }
+.vcard-note { margin: 0; font-size: 13px; line-height: 1.5; padding: 8px 12px; border-radius: 10px; background: rgba(223, 254, 0, 0.1); border-left: 3px solid var(--lime-2); }
+.vcard-light .vcard-note { background: var(--grey-1); border-left-color: var(--navy-2); }
+
+/* R2-10 way back from the interim result */
+.interim-back { display: flex; flex-direction: column; gap: 10px; }
+.chapter-list-open { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+@media print { .vcard { padding: 10px; gap: 6px; } .vcard-area-row { font-size: 10px; } }

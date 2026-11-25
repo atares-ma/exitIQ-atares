@@ -113,3 +113,78 @@ export function inputsUpTo(ctx: AssessmentContext, answers: AnswerMap, lastChapt
   return 4 + setupInputs(ctx) + list.length + extra;
 }
 
+
+// ── progress across all inputs (R2-01) ───────────────────────────────────────
+
+/**
+ * Required setup inputs that the counter shows as questions: time horizon,
+ * perspective (when asked), specialist topics, seller. The tax-residence
+ * follow-up sits on the same page and is not counted (R2-01 rule 1).
+ */
+export function setupCounted(ctx: AssessmentContext): number {
+  return 1 + (asksPerspective(ctx) ? 1 : 0) + 1 + 1;
+}
+
+/** Setup inputs the user has already given (same items as setupCounted). */
+export function setupCountedDone(ctx: AssessmentContext): number {
+  const topics = ctx.topicsNone || ctx.topics.length > 0 || ctx.uncertainTopics.length > 0 || isPart(ctx);
+  const perspective = asksPerspective(ctx) && !!ctx.profileOverride && perspectiveCandidates(ctx).includes(ctx.profileOverride);
+  return Number(!!ctx.horizon) + Number(perspective) + Number(topics) + Number(!!ctx.seller);
+}
+
+export function contextDone(ctx: AssessmentContext): number {
+  return Number(ctx.ownershipTags.length > 0) + Number(!!ctx.managementModel) + Number(ctx.intents.length > 0) + Number(!!ctx.liquidity);
+}
+
+/**
+ * Detail questions counted in the total. With a part sold, Q34 counts from
+ * the start, so the total never rises; it drops by one when Q53 gets a
+ * statement instead of "Trifft auf uns nicht zu" (R2-01 rule 4).
+ */
+export function detailCount(ctx: AssessmentContext, answers: AnswerMap): number {
+  const list = deepList(ctx, answers);
+  if (!isPart(ctx) || list.some((x) => x.q.id === 'Q34')) return list.length;
+  const q53 = answers.Q53;
+  const statement = !!q53 && q53.status !== 'not_applicable' && !q53.inactiveSince && !q53.requiresReconfirmation;
+  return list.length + (statement ? 0 : 1);
+}
+
+/** Experience value for the specialist topics while they are not chosen yet (assumption, to be replaced by the analytics mean). */
+export const TOPICS_ESTIMATE = 3;
+export const DEFAULT_ESTIMATE = 40;
+
+export interface Total { total: number; approx: boolean }
+
+/** Total number of inputs from the first click to the result. Approximate ("ca.") until topics and seller are set. */
+export function progressTotal(ctx: AssessmentContext, answers: AnswerMap): Total {
+  if (crisisReason(ctx)) return { total: 4, approx: false };
+  if (setup2Complete(ctx) && contextComplete(ctx)) return { total: 4 + setupCounted(ctx) + detailCount(ctx, answers), approx: false };
+  if (!ctx.ownershipTags.length || !ctx.intents.length) return { total: DEFAULT_ESTIMATE, approx: true };
+  // Questions triggered by K1 and K3 alone: no topics, seller not known yet.
+  const base: AssessmentContext = { ...ctx, topics: [], topicsNone: true, uncertainTopics: [], seller: null, sellerTax: null };
+  const raw = 4 + setupCounted(ctx) + detailCount(base, {}) + TOPICS_ESTIMATE;
+  return { total: Math.round(raw / 5) * 5, approx: true };
+}
+
+export const totalLabel = (t: Total) => (t.approx ? `ca. ${t.total}` : `${t.total}`);
+
+/** Inputs given so far: context, setup, detail questions with a response. */
+export function progressDone(ctx: AssessmentContext, answers: AnswerMap): number {
+  return contextDone(ctx) + setupCountedDone(ctx) + progressCounts(deepList(ctx, answers), answers).answered;
+}
+
+/** Position (1-based) of the detail question at list index i. */
+export function questionPosition(ctx: AssessmentContext, i: number): number {
+  return 4 + setupCounted(ctx) + i + 1;
+}
+
+/** Number of inputs up to and including chapter 4 (where the interim result sits on the bar). */
+export function interimPosition(ctx: AssessmentContext, answers: AnswerMap): number {
+  return 4 + setupCounted(ctx) + deepList(ctx, answers).filter((x) => x.chapter <= INTERIM_AFTER_CHAPTER).length;
+}
+
+/** "Frage 5" or "Fragen 5 und 6" or "Fragen 1 bis 4". */
+export function positionsLabel(from: number, to: number): string {
+  if (to <= from) return `Frage ${from}`;
+  return to === from + 1 ? `Fragen ${from} und ${to}` : `Fragen ${from} bis ${to}`;
+}
